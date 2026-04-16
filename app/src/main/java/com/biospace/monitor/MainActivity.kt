@@ -1,5 +1,6 @@
 package com.biospace.monitor
 
+import com.biospace.monitor.ui.screens.ChatScreen
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Bundle
