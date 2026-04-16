@@ -21,6 +21,11 @@ import com.biospace.monitor.ui.components.*
 import com.biospace.monitor.ui.theme.*
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.MaterialTheme
 
 // ═══════════════════════════════════════════════════════
 //  CME TRACKER
@@ -347,34 +352,23 @@ fun SolarImagesScreen() {
 // ═══════════════════════════════════════════════════════
 //  CHAT SCREEN
 // ═══════════════════════════════════════════════════════
-@Composable
-fun ChatScreen(
-    messages: List<ChatMessage>,
-    onSend: (text: String, nick: String) -> Unit
-) {
-    var nick by remember { mutableStateOf("ANON") }
-    var text by remember { mutableStateOf("") }
-
-    BioCard {
-        CardTitle("BIOSPACE CHANNEL", "// LOCAL DEVICE")
-        
-        // Messages
-        Column(
-            modifier = Modifier.fillMaxWidth().heightIn(min = 120.dp, max = 200.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
+    // --- START OF INPUT SECTION ---
+    @Composable
+    fun ChatInputSection(
+        nick: String,
+        onNickChange: (String) -> Unit,
+        text: String,
+        onTextChange: (String) -> Unit,
+        onSend: (String, String) -> Unit
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(7.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            messages.takeLast(20).forEach { msg ->
-                ChatBubble(msg)
-            }
-        }
-
-        Spacer(Modifier.height(10.dp))
-
-        // Input
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp), verticalAlignment = Alignment.CenterVertically) {
             OutlinedTextField(
                 value = nick,
-                onValueChange = { nick = it.uppercase().take(12) },
+                onValueChange = { onNickChange(it.uppercase().take(12)) },
                 modifier = Modifier.width(80.dp),
                 textStyle = androidx.compose.ui.text.TextStyle(color = CyanColor, fontSize = 10.sp, fontFamily = FontFamily.Monospace),
                 placeholder = { Text("NICK", color = DimColor, fontSize = 9.sp) },
@@ -384,9 +378,10 @@ fun ChatScreen(
                     unfocusedBorderColor = BorderColor
                 )
             )
+
             OutlinedTextField(
                 value = text,
-                onValueChange = { text = it },
+                onValueChange = onTextChange,
                 modifier = Modifier.weight(1f),
                 textStyle = androidx.compose.ui.text.TextStyle(color = TextColor, fontSize = 10.sp, fontFamily = FontFamily.Monospace),
                 placeholder = { Text("TYPE MESSAGE...", color = DimColor, fontSize = 9.sp) },
@@ -396,54 +391,40 @@ fun ChatScreen(
                     unfocusedBorderColor = BorderColor
                 )
             )
+
             Button(
                 onClick = {
                     if (text.isNotBlank()) {
                         onSend(text, nick)
-                        text = ""
                     }
                 },
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF071828)),
-                border = androidx.compose.foundation.BorderStroke(1.dp, CyanColor.copy(alpha = 0.55f))
+                colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
+                border = androidx.compose.foundation.BorderStroke(1.dp, CyanColor.copy(alpha = 0.5f))
             ) {
-                Text("SEND", color = CyanColor, fontSize = 9.sp, letterSpacing = 2.sp)
+                Text("SEND", color = CyanColor, fontSize = 9.sp, letterSpacing = 1.sp)
             }
         }
     }
-}
+    // --- END OF INPUT SECTION ---
 
-@Composable
-private fun ChatBubble(msg: ChatMessage) {
-    val timeStr = remember(msg.timestamp) {
-        java.text.SimpleDateFormat("HH:mm", java.util.Locale.US).format(java.util.Date(msg.timestamp))
-    }
-    if (msg.isSystem) {
-        Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-            Text(msg.text, color = DimColor, fontSize = 8.sp, letterSpacing = 1.sp)
+    @Composable
+    private fun ChatBubble(msg: ChatMessage) {
+        val timeStr = remember(msg.timestamp) {
+            java.text.SimpleDateFormat("HH:mm", java.util.Locale.US).format(java.util.Date(msg.timestamp))
         }
-    } else {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = if (msg.mine) Arrangement.End else Arrangement.Start
-        ) {
-            Column(horizontalAlignment = if (msg.mine) Alignment.End else Alignment.Start) {
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(
-                            if (msg.mine) CyanColor.copy(alpha = 0.12f) else Color(0xFF071828)
-                        )
-                        .border(1.dp, if (msg.mine) CyanColor.copy(alpha = 0.3f) else BorderColor,
-                            RoundedCornerShape(10.dp))
-                        .padding(horizontal = 11.dp, vertical = 7.dp)
-                ) {
-                    Text(msg.text, color = TextColor, fontSize = 10.sp)
-                }
-                Text(
-                    "${if (!msg.mine) "${msg.nick} · " else ""}$timeStr",
-                    color = DimColor, fontSize = 7.sp, letterSpacing = 1.sp
-                )
+
+        if (msg.isSystem) {
+            Box(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), contentAlignment = Alignment.Center) {
+                Text(msg.text, color = DimColor, fontSize = 8.sp, letterSpacing = 1.sp)
+            }
+        } else {
+            // Standard message bubble logic goes here
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = if (msg.mine) Alignment.End else Alignment.Start
+            ) {
+                Text(text = msg.text, color = Color.White, modifier = Modifier.padding(8.dp))
             }
         }
     }
-}
+
