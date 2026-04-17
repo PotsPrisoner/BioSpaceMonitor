@@ -6,11 +6,11 @@ plugins {
 }
 
 android {
-    namespace = "com.biospace.monitor"
+    namespace = "com.biospace.biospace"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.biospace.monitor"
+        applicationId = "com.biospace.biospace"
         minSdk = 26
         targetSdk = 35
         versionCode = 1
