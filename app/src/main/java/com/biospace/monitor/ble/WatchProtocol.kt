@@ -7,11 +7,12 @@ object WatchProtocol {
     // ── GATT UUIDs (confirmed from nRF Connect logs) ──────────────────────────
     val SERVICE_UUID     = UUID.fromString("6E400001-B5A3-F393-E0A9-E50E24DCCA9E")
     val CHAR_NOTIFY_UUID = UUID.fromString("6E400003-B5A3-F393-E0A9-E50E24DCCA9E")
+    val CHAR_WRITE_UUID  = UUID.fromString("6E400002-B5A3-F393-E0A9-E50E24DCCA9E")
     val DESCRIPTOR_UUID  = UUID.fromString("00002902-0000-1000-8000-00805F9B34FB")
 
     // ── Known packet type bytes (byte[4]) ─────────────────────────────────────
     private const val TYPE_STEPS    = 0x51
-    private const val TYPE_BP_HIST  = 0x52
+    private const val TYPE_BP_HIST  = 0x92
     private const val TYPE_SPO2     = 0x73
     private const val TYPE_TEMP     = 0x87
     private const val TYPE_BATTERY  = 0x91
@@ -29,7 +30,7 @@ object WatchProtocol {
     fun parse(raw: ByteArray): WatchReading? {
         if (raw.size < 5) return null
         val hdr  = raw[0].u8()
-        if (hdr != 0xAB) return null
+        if (hdr != 0xAB && hdr != 0xEA) return null
         val type = raw[4].u8()
         val sub  = if (raw.size > 5) raw[5].u8() else 0
 
