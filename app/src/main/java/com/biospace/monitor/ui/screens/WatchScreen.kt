@@ -64,12 +64,11 @@ fun WatchScreen(repository: WatchRepository) {
         rememberMultiplePermissionsState(listOf(Manifest.permission.POST_NOTIFICATIONS))
     } else null
 
+    // Outer Column — NO verticalScroll here, just fills available space
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
             .padding(horizontal = 14.dp)
-            .padding(bottom = 24.dp)
     ) {
         Spacer(Modifier.height(11.dp))
 
@@ -166,10 +165,13 @@ fun WatchScreen(repository: WatchRepository) {
 
         Spacer(Modifier.height(10.dp))
 
-        when (selectedTab) {
-            0 -> LiveTab(latest, logMessages)
-            1 -> HistoryTab(history, repository)
-            2 -> ReportsTab(sessions, repository, context)
+        // Each tab gets its own scrollable Column with fillMaxSize + weight
+        Box(modifier = Modifier.fillMaxSize()) {
+            when (selectedTab) {
+                0 -> LiveTab(latest, logMessages)
+                1 -> HistoryTab(history, repository)
+                2 -> ReportsTab(sessions, repository, context)
+            }
         }
     }
 }
@@ -178,39 +180,46 @@ fun WatchScreen(repository: WatchRepository) {
 
 @Composable
 private fun LiveTab(latest: WatchSnapshot, logMessages: List<String>) {
-    WLabel("CURRENT READINGS")
-    Spacer(Modifier.height(8.dp))
-
-    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        WTile(Modifier.weight(1f), Icons.Default.Favorite,      "HEART",       latest.heartRate?.toString() ?: "--",      "BPM",  Color(0xFFFF6B6B))
-        WTile(Modifier.weight(1f), Icons.Default.MonitorHeart,  "BLOOD PRESS",
-            if (latest.systolic != null && latest.diastolic != null) "${latest.systolic}/${latest.diastolic}" else "--",
-            "mmHg", Color(0xFFFF8C42))
-    }
-    Spacer(Modifier.height(8.dp))
-    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        WTile(Modifier.weight(1f), Icons.Default.Air,           "SPO2",        latest.spo2?.let { "$it" } ?: "--",        "%",    Color(0xFF64B5F6))
-        WTile(Modifier.weight(1f), Icons.Default.Thermostat,    "TEMP",        latest.temperature?.let { "$it" } ?: "--", "°C",   Color(0xFFFFD54F))
-    }
-    Spacer(Modifier.height(8.dp))
-    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        WTile(Modifier.weight(1f), Icons.Default.DirectionsWalk,"STEPS",       latest.steps?.toString() ?: "--",          "TODAY",Color(0xFF81C784))
-        WTile(Modifier.weight(1f), Icons.Default.Psychology,    "STRESS",      latest.stress?.let { "$it" } ?: "--",      "/100", Color(0xFFCE93D8))
-    }
-    Spacer(Modifier.height(8.dp))
-    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        WTile(Modifier.weight(1f), Icons.Default.Air,           "RESP RATE",   latest.respiratoryRate?.let { "$it" } ?: "--", "RPM", Color(0xFF80DEEA))
-        Spacer(Modifier.weight(1f))
-    }
-
-    if (logMessages.isNotEmpty()) {
-        Spacer(Modifier.height(14.dp))
-        WLabel("CONNECTION LOG")
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(bottom = 24.dp)
+    ) {
+        WLabel("CURRENT READINGS")
         Spacer(Modifier.height(8.dp))
-        WCard {
-            logMessages.take(8).forEach { msg ->
-                Text("> $msg", color = DimColor, fontSize = 9.sp,
-                    letterSpacing = 1.sp, fontFamily = FontFamily.Monospace)
+
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            WTile(Modifier.weight(1f), Icons.Default.Favorite,      "HEART",       latest.heartRate?.toString() ?: "--",      "BPM",  Color(0xFFFF6B6B))
+            WTile(Modifier.weight(1f), Icons.Default.MonitorHeart,  "BLOOD PRESS",
+                if (latest.systolic != null && latest.diastolic != null) "${latest.systolic}/${latest.diastolic}" else "--",
+                "mmHg", Color(0xFFFF8C42))
+        }
+        Spacer(Modifier.height(8.dp))
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            WTile(Modifier.weight(1f), Icons.Default.Air,           "SPO2",        latest.spo2?.let { "$it" } ?: "--",        "%",    Color(0xFF64B5F6))
+            WTile(Modifier.weight(1f), Icons.Default.Thermostat,    "TEMP",        latest.temperature?.let { "$it" } ?: "--", "°C",   Color(0xFFFFD54F))
+        }
+        Spacer(Modifier.height(8.dp))
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            WTile(Modifier.weight(1f), Icons.Default.DirectionsWalk,"STEPS",       latest.steps?.toString() ?: "--",          "TODAY",Color(0xFF81C784))
+            WTile(Modifier.weight(1f), Icons.Default.Psychology,    "STRESS",      latest.stress?.let { "$it" } ?: "--",      "/100", Color(0xFFCE93D8))
+        }
+        Spacer(Modifier.height(8.dp))
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            WTile(Modifier.weight(1f), Icons.Default.Air,           "RESP RATE",   latest.respiratoryRate?.let { "$it" } ?: "--", "RPM", Color(0xFF80DEEA))
+            Spacer(Modifier.weight(1f))
+        }
+
+        if (logMessages.isNotEmpty()) {
+            Spacer(Modifier.height(14.dp))
+            WLabel("CONNECTION LOG")
+            Spacer(Modifier.height(8.dp))
+            WCard {
+                logMessages.take(8).forEach { msg ->
+                    Text("> $msg", color = DimColor, fontSize = 9.sp,
+                        letterSpacing = 1.sp, fontFamily = FontFamily.Monospace)
+                }
             }
         }
     }
@@ -222,61 +231,66 @@ private fun LiveTab(latest: WatchSnapshot, logMessages: List<String>) {
 private fun HistoryTab(history: List<WatchSnapshot>, repository: WatchRepository) {
     val context = LocalContext.current
 
-    Row(modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically) {
-        WLabel("HISTORY  (${history.size} readings)")
-        if (history.isNotEmpty()) {
-            WSmallButton("EXPORT CSV") {
-                val csv  = repository.exportCsv()
-                val file = java.io.File(context.getExternalFilesDir(null),
-                    "biospace_watch_${System.currentTimeMillis()}.csv")
-                file.writeText(csv)
-                android.widget.Toast.makeText(context, "Saved: ${file.name}", android.widget.Toast.LENGTH_LONG).show()
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(bottom = 24.dp)
+    ) {
+        Row(modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically) {
+            WLabel("HISTORY  (${history.size} readings)")
+            if (history.isNotEmpty()) {
+                WSmallButton("EXPORT CSV") {
+                    val csv  = repository.exportCsv()
+                    val file = java.io.File(context.getExternalFilesDir(null),
+                        "biospace_watch_${System.currentTimeMillis()}.csv")
+                    file.writeText(csv)
+                    android.widget.Toast.makeText(context, "Saved: ${file.name}", android.widget.Toast.LENGTH_LONG).show()
+                }
             }
         }
-    }
-    Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(8.dp))
 
-    // Kp-style timeline graph
-    if (history.size >= 2) {
-        WLabel("HR TIMELINE  (bpm)")
-        Spacer(Modifier.height(6.dp))
-        KpStyleGraph(
-            values = history.takeLast(96).map { it.heartRate?.toFloat() ?: 0f },
-            maxVal = 120f, minVal = 40f,
-            color  = Color(0xFFFF6B6B)
-        )
-        Spacer(Modifier.height(10.dp))
+        if (history.size >= 2) {
+            WLabel("HR TIMELINE  (bpm)")
+            Spacer(Modifier.height(6.dp))
+            KpStyleGraph(
+                values = history.takeLast(96).map { it.heartRate?.toFloat() ?: 0f },
+                maxVal = 120f, minVal = 40f,
+                color  = Color(0xFFFF6B6B)
+            )
+            Spacer(Modifier.height(10.dp))
 
-        WLabel("BP TIMELINE  (systolic mmHg)")
-        Spacer(Modifier.height(6.dp))
-        KpStyleGraph(
-            values = history.takeLast(96).map { it.systolic?.toFloat() ?: 0f },
-            maxVal = 180f, minVal = 80f,
-            color  = Color(0xFFFF8C42)
-        )
-        Spacer(Modifier.height(10.dp))
+            WLabel("BP TIMELINE  (systolic mmHg)")
+            Spacer(Modifier.height(6.dp))
+            KpStyleGraph(
+                values = history.takeLast(96).map { it.systolic?.toFloat() ?: 0f },
+                maxVal = 180f, minVal = 80f,
+                color  = Color(0xFFFF8C42)
+            )
+            Spacer(Modifier.height(10.dp))
 
-        WLabel("SPO2 TIMELINE  (%)")
-        Spacer(Modifier.height(6.dp))
-        KpStyleGraph(
-            values = history.takeLast(96).map { it.spo2?.toFloat() ?: 0f },
-            maxVal = 100f, minVal = 85f,
-            color  = Color(0xFF64B5F6)
-        )
-        Spacer(Modifier.height(14.dp))
-    }
+            WLabel("SPO2 TIMELINE  (%)")
+            Spacer(Modifier.height(6.dp))
+            KpStyleGraph(
+                values = history.takeLast(96).map { it.spo2?.toFloat() ?: 0f },
+                maxVal = 100f, minVal = 85f,
+                color  = Color(0xFF64B5F6)
+            )
+            Spacer(Modifier.height(14.dp))
+        }
 
-    // Last 10 snapshots
-    WLabel("RECENT SNAPSHOTS")
-    Spacer(Modifier.height(8.dp))
-    if (history.isEmpty()) {
-        WCard { Text("No history yet. Connect your watch to start recording.", color = DimColor, fontSize = 10.sp) }
-    } else {
-        history.takeLast(10).reversed().forEach { snap ->
-            HistoryRow(snap)
-            Spacer(Modifier.height(4.dp))
+        WLabel("RECENT SNAPSHOTS")
+        Spacer(Modifier.height(8.dp))
+        if (history.isEmpty()) {
+            WCard { Text("No history yet. Connect your watch to start recording.", color = DimColor, fontSize = 10.sp) }
+        } else {
+            history.takeLast(10).reversed().forEach { snap ->
+                HistoryRow(snap)
+                Spacer(Modifier.height(4.dp))
+            }
         }
     }
 }
@@ -312,39 +326,46 @@ private fun KpStyleGraph(values: List<Float>, maxVal: Float, minVal: Float, colo
 
 @Composable
 private fun ReportsTab(sessions: List<CorrelationSession>, repository: WatchRepository, context: android.content.Context) {
-    WLabel("CORRELATION SESSIONS  (${sessions.size})")
-    Spacer(Modifier.height(8.dp))
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(bottom = 24.dp)
+    ) {
+        WLabel("CORRELATION SESSIONS  (${sessions.size})")
+        Spacer(Modifier.height(8.dp))
 
-    if (sessions.isEmpty()) {
-        WCard {
-            Text(
-                "No correlation sessions yet. Sessions are recorded automatically when space weather events or biometric alerts occur.",
-                color = DimColor, fontSize = 10.sp, letterSpacing = 1.sp
-            )
-        }
-    } else {
-        val fmt = SimpleDateFormat("MM/dd HH:mm", Locale.US)
-        sessions.reversed().forEach { session ->
+        if (sessions.isEmpty()) {
             WCard {
-                Row(modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(session.triggerDescription, color = CyanColor,
-                            fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
-                        Text(fmt.format(Date(session.startTime)), color = DimColor, fontSize = 9.sp)
-                        Text("${session.snapshots.size} readings", color = DimColor, fontSize = 9.sp)
-                    }
-                    WSmallButton("EXPORT") {
-                        val report = repository.exportSessionReport(session)
-                        val file   = java.io.File(context.getExternalFilesDir(null),
-                            "correlation_${session.id}.txt")
-                        file.writeText(report)
-                        android.widget.Toast.makeText(context, "Saved: ${file.name}", android.widget.Toast.LENGTH_LONG).show()
+                Text(
+                    "No correlation sessions yet. Sessions are recorded automatically when space weather events or biometric alerts occur.",
+                    color = DimColor, fontSize = 10.sp, letterSpacing = 1.sp
+                )
+            }
+        } else {
+            val fmt = SimpleDateFormat("MM/dd HH:mm", Locale.US)
+            sessions.reversed().forEach { session ->
+                WCard {
+                    Row(modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(session.triggerDescription, color = CyanColor,
+                                fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                            Text(fmt.format(Date(session.startTime)), color = DimColor, fontSize = 9.sp)
+                            Text("${session.snapshots.size} readings", color = DimColor, fontSize = 9.sp)
+                        }
+                        WSmallButton("EXPORT") {
+                            val report = repository.exportSessionReport(session)
+                            val file   = java.io.File(context.getExternalFilesDir(null),
+                                "correlation_${session.id}.txt")
+                            file.writeText(report)
+                            android.widget.Toast.makeText(context, "Saved: ${file.name}", android.widget.Toast.LENGTH_LONG).show()
+                        }
                     }
                 }
+                Spacer(Modifier.height(6.dp))
             }
-            Spacer(Modifier.height(6.dp))
         }
     }
 }
@@ -369,7 +390,6 @@ private fun WCard(content: @Composable ColumnScope.() -> Unit) {
     )
 }
 
-// Alias for use inside this file
 @Composable
 private fun WatchCard(content: @Composable ColumnScope.() -> Unit) = WCard(content)
 
