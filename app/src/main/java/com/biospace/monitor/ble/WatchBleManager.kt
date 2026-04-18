@@ -146,6 +146,7 @@ class WatchBleManager(private val context: Context) {
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private fun handleData(raw: ByteArray) {
+        log("RAW: ${raw.joinToString(" ") { "%02X".format(it) }}")
         WatchProtocol.parse(raw)?.let { _readings.tryEmit(it) }
     }
 
