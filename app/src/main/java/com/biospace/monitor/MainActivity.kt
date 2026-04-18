@@ -95,7 +95,8 @@ private enum class NavTab(val label: String) {
 @Composable
 fun BioSpaceApp(onRequestGps: (callback: (android.location.Location) -> Unit) -> Unit) {
     val vm: MainViewModel = viewModel()
-    val watchRepo = remember { WatchRepository(LocalContext.current) }
+    val context = LocalContext.current
+    val watchRepo = remember { WatchRepository(context) }
     val sw by vm.spaceWeather.collectAsState()
     LaunchedEffect(sw) { watchRepo.onSpaceWeatherUpdate(sw) }
     val weather by vm.weather.collectAsState()
