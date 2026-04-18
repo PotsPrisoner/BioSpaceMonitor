@@ -213,13 +213,12 @@ private fun LiveTab(latest: WatchSnapshot, logMessages: List<String>) {
 
         if (logMessages.isNotEmpty()) {
             Spacer(Modifier.height(14.dp))
-            WLabel("CONNECTION LOG")
-            Spacer(Modifier.height(8.dp))
-            WCard {
-                logMessages.take(8).forEach { msg ->
-                    Text("> $msg", color = DimColor, fontSize = 9.sp,
-                        letterSpacing = 1.sp, fontFamily = FontFamily.Monospace)
-                }
+            val ctx = LocalContext.current
+            WSmallButton("SAVE LOG") {
+                val ts = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.US).format(java.util.Date())
+                val file = java.io.File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS), "ble_log_${ts}.txt")
+                file.writeText(logMessages.joinToString("\n"))
+                android.widget.Toast.makeText(ctx, "Saved: ${file.name}", android.widget.Toast.LENGTH_LONG).show()
             }
         }
     }
