@@ -37,13 +37,13 @@ data class HemisphericPower(
 )
 
 data class HpValues(
-    val north: String? = null,
-    val North: String? = null,
-    val south: String? = null,
-    val South: String? = null
+    @com.google.gson.annotations.SerializedName("north") val northLower: String? = null,
+    @com.google.gson.annotations.SerializedName("North") val northCap: String? = null,
+    @com.google.gson.annotations.SerializedName("south") val southLower: String? = null,
+    @com.google.gson.annotations.SerializedName("South") val southCap: String? = null
 ) {
-    fun northVal() = (north ?: North)?.toDoubleOrNull() ?: Double.NaN
-    fun southVal() = (south ?: South)?.toDoubleOrNull() ?: Double.NaN
+    fun northVal() = (northLower ?: northCap)?.toDoubleOrNull() ?: Double.NaN
+    fun southVal() = (southLower ?: southCap)?.toDoubleOrNull() ?: Double.NaN
 }
 
 // ── CME from NASA DONKI ───────────────────────────────────────────────────────
