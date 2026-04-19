@@ -230,7 +230,7 @@ private fun ConnectionButton(state: ConnectionState, vm: MainViewModel) {
     val permLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { results ->
-        if (results.values.all { it }) vm.connectWatch()
+        if (results.values.all { it }) vm.connectWatchTo("C0:29:AB:60:4D:10")
     }
     Button(
         onClick = {
@@ -245,7 +245,7 @@ private fun ConnectionButton(state: ConnectionState, vm: MainViewModel) {
                         androidx.core.content.ContextCompat.checkSelfPermission(context, it) !=
                             android.content.pm.PackageManager.PERMISSION_GRANTED
                     }
-                    if (needed.isEmpty()) vm.connectWatch()
+                    if (needed.isEmpty()) vm.connectWatchTo("C0:29:AB:60:4D:10")
                     else permLauncher.launch(needed.toTypedArray())
                 }
                 ConnectionState.CONNECTED -> vm.disconnectWatch()
