@@ -1,10 +1,8 @@
 {
   "rules": {
-    ".read": false,
-    ".write": false,
+    ".read": true,
+    ".write": true,
     "biospace_chat": {
-      ".read": true,
-      ".write": true,
       "$msg": {
         ".validate": "newData.hasChildren(['text','nick','timestamp']) && newData.child('text').isString() && newData.child('text').val().length <= 280 && newData.child('nick').isString() && newData.child('nick').val().length <= 12"
       }

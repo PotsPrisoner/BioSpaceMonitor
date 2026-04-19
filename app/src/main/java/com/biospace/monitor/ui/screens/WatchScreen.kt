@@ -1,463 +1,372 @@
 package com.biospace.monitor.ui.screens
 
-import android.Manifest
-import android.os.Build
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.biospace.monitor.ble.*
-import com.biospace.monitor.ui.theme.*
-import com.google.accompanist.permissions.ExperimentalPermissionsApi
-import com.google.accompanist.permissions.rememberMultiplePermissionsState
+import com.biospace.monitor.ble.WatchBleManager.ConnectionState
+import com.biospace.monitor.ble.WatchProtocol.WatchReading
+import com.biospace.monitor.ui.MainViewModel
 import java.text.SimpleDateFormat
 import java.util.*
 
-@OptIn(ExperimentalPermissionsApi::class)
-@Composable
-fun WatchScreen(repository: WatchRepository) {
-    val context      = LocalContext.current
-    val connState    by repository.ble.state.collectAsStateWithLifecycle()
-    val latest       by repository.latest.collectAsStateWithLifecycle()
-    val history      by repository.history.collectAsStateWithLifecycle()
-    val sessions     by repository.sessions.collectAsStateWithLifecycle()
-    val isEventMode  by repository.isEventMode.collectAsStateWithLifecycle()
-    val logMessages  = remember { mutableStateListOf<String>() }
-    var selectedTab  by remember { mutableStateOf(0) } // 0=Live, 1=History, 2=Reports
-
-    LaunchedEffect(Unit) {
-        repository.ble.log.collect { msg ->
-            logMessages.add(0, msg)
-            if (logMessages.size > 100) logMessages.removeLast()
-        }
-    }
-
-    val blePermissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-        rememberMultiplePermissionsState(listOf(
-            Manifest.permission.BLUETOOTH_SCAN,
-            Manifest.permission.BLUETOOTH_CONNECT
-        ))
-    } else {
-        rememberMultiplePermissionsState(listOf(Manifest.permission.ACCESS_FINE_LOCATION))
-    }
-
-    val notifPermissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-        rememberMultiplePermissionsState(listOf(Manifest.permission.POST_NOTIFICATIONS))
-    } else null
-
-    // Outer Column — NO verticalScroll here, just fills available space
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 14.dp)
-    ) {
-        Spacer(Modifier.height(11.dp))
-
-        // ── Event mode banner ─────────────────────────────────────────────
-        if (isEventMode) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(Color(0xFF1A0A00))
-                    .border(1.dp, Color(0xFFFF8C00), RoundedCornerShape(8.dp))
-                    .padding(10.dp)
-            ) {
-                Text(
-                    "⚡ SPACE WEATHER EVENT — CONTINUOUS RECORDING ACTIVE",
-                    color = Color(0xFFFF8C00),
-                    fontSize = 9.sp, letterSpacing = 1.5.sp,
-                    fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold
-                )
-            }
-            Spacer(Modifier.height(8.dp))
-        }
-
-        // ── Connection card ───────────────────────────────────────────────
-        WCard {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Column {
-                    Text(
-                        text = when (connState) {
-                            ConnectionState.DISCONNECTED -> "NOT CONNECTED"
-                            ConnectionState.SCANNING     -> "SCANNING…"
-                            ConnectionState.CONNECTING   -> "CONNECTING…"
-                            ConnectionState.CONNECTED    -> "BP DOCTOR FIT"
-                        },
-                        color = when (connState) {
-                            ConnectionState.CONNECTED    -> CyanColor
-                            ConnectionState.DISCONNECTED -> Color(0xFFFF4444)
-                            else                         -> Color(0xFFFFAA00)
-                        },
-                        fontSize = 11.sp, letterSpacing = 2.sp,
-                        fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold
-                    )
-                    if (latest.battery != null) {
-                        Text("Battery ${latest.battery}%", color = DimColor, fontSize = 9.sp, letterSpacing = 1.sp)
-                    }
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (connState == ConnectionState.CONNECTED) {
-                        WSmallButton("DISCONNECT", danger = true) { repository.stop() }
-                    } else {
-                        WSmallButton("CONNECT") {
-                            if (blePermissions.allPermissionsGranted) {
-                                repository.start()
-                                repository.ble.scanAndConnect()
-                            } else {
-                                blePermissions.launchMultiplePermissionRequest()
-                            }
-                        }
-                    }
-                    notifPermissions?.let {
-                        if (!it.allPermissionsGranted) {
-                            WSmallButton("ENABLE ALERTS") { it.launchMultiplePermissionRequest() }
-                        }
-                    }
-                }
-            }
-        }
-
-        Spacer(Modifier.height(10.dp))
-
-        // ── Sub-tab row ───────────────────────────────────────────────────
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            listOf("LIVE", "HISTORY", "REPORTS").forEachIndexed { i, label ->
-                val active = selectedTab == i
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(if (active) Color(0xFF071828) else CardColor)
-                        .border(1.dp, if (active) CyanColor else BorderColor, RoundedCornerShape(6.dp))
-                        .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { selectedTab = i }
-                        .padding(horizontal = 14.dp, vertical = 7.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(label, color = if (active) CyanColor else DimColor,
-                        fontSize = 9.sp, letterSpacing = 2.sp,
-                        fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal)
-                }
-            }
-        }
-
-        Spacer(Modifier.height(10.dp))
-
-        // Each tab gets its own scrollable Column with fillMaxSize + weight
-        Box(modifier = Modifier.fillMaxSize()) {
-            when (selectedTab) {
-                0 -> LiveTab(latest, logMessages)
-                1 -> HistoryTab(history, repository)
-                2 -> ReportsTab(sessions, repository, context)
-            }
-        }
-    }
-}
-
-// ── Live Tab ──────────────────────────────────────────────────────────────────
+private val CardBg    = Color(0xFF1A1A2E)
+private val AccentRed = Color(0xFFE94560)
+private val AccentTeal = Color(0xFF00B4D8)
+private val AccentGreen = Color(0xFF4CAF50)
+private val AccentAmber = Color(0xFFFFAB00)
+private val AccentPurple = Color(0xFF9C27B0)
+private val AccentOrange = Color(0xFFFF5722)
 
 @Composable
-private fun LiveTab(latest: WatchSnapshot, logMessages: List<String>) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(bottom = 24.dp)
-    ) {
-        WLabel("CURRENT READINGS")
-        Spacer(Modifier.height(8.dp))
+fun WatchScreen(vm: MainViewModel) {
+    val connection by vm.watchConnectionState.collectAsState()
+    val bp         by vm.bloodPressure.collectAsState()
+    val hr         by vm.heartRate.collectAsState()
+    val spo2       by vm.spO2.collectAsState()
+    val steps      by vm.steps.collectAsState()
+    val sleep      by vm.sleep.collectAsState()
+    val stress     by vm.stress.collectAsState()
+    val temp       by vm.temperature.collectAsState()
+    val immunity   by vm.immunity.collectAsState()
+    val battery    by vm.watchBattery.collectAsState()
+    val device     by vm.watchDevice.collectAsState()
 
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            WTile(Modifier.weight(1f), Icons.Default.Favorite,      "HEART",       latest.heartRate?.toString() ?: "--",      "BPM",  Color(0xFFFF6B6B))
-            WTile(Modifier.weight(1f), Icons.Default.MonitorHeart,  "BLOOD PRESS",
-                if (latest.systolic != null && latest.diastolic != null) "${latest.systolic}/${latest.diastolic}" else "--",
-                "mmHg", Color(0xFFFF8C42))
-        }
-        Spacer(Modifier.height(8.dp))
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            WTile(Modifier.weight(1f), Icons.Default.Air,           "SPO2",        latest.spo2?.let { "$it" } ?: "--",        "%",    Color(0xFF64B5F6))
-            WTile(Modifier.weight(1f), Icons.Default.Thermostat,    "TEMP",        latest.temperature?.let { "$it" } ?: "--", "°C",   Color(0xFFFFD54F))
-        }
-        Spacer(Modifier.height(8.dp))
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            WTile(Modifier.weight(1f), Icons.Default.DirectionsWalk,"STEPS",       latest.steps?.toString() ?: "--",          "TODAY",Color(0xFF81C784))
-            WTile(Modifier.weight(1f), Icons.Default.Psychology,    "STRESS",      latest.stress?.let { "$it" } ?: "--",      "/100", Color(0xFFCE93D8))
-        }
-        Spacer(Modifier.height(8.dp))
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            WTile(Modifier.weight(1f), Icons.Default.Air,           "RESP RATE",   latest.respiratoryRate?.let { "$it" } ?: "--", "RPM", Color(0xFF80DEEA))
-            Spacer(Modifier.weight(1f))
-        }
-
-        if (logMessages.isNotEmpty()) {
-            Spacer(Modifier.height(14.dp))
-            val ctx = LocalContext.current
-            WSmallButton("SAVE LOG") {
-                val ts = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.US).format(java.util.Date())
-                val file = java.io.File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS), "ble_log_${ts}.txt")
-                file.writeText(logMessages.joinToString("\n"))
-                android.widget.Toast.makeText(ctx, "Saved: ${file.name}", android.widget.Toast.LENGTH_LONG).show()
-            }
-        }
-    }
-}
-
-// ── History Tab ───────────────────────────────────────────────────────────────
-
-@Composable
-private fun HistoryTab(history: List<WatchSnapshot>, repository: WatchRepository) {
-    val context = LocalContext.current
+    val bpHistory    by vm.bpHistory.collectAsState()
+    val hrHistory    by vm.hrHistory.collectAsState()
+    val spo2History  by vm.spo2History.collectAsState()
+    val sleepHistory by vm.sleepHistory.collectAsState()
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(bottom = 24.dp)
+            .background(Color(0xFF0F0F1A))
+            .padding(horizontal = 12.dp)
     ) {
-        Row(modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically) {
-            WLabel("HISTORY  (${history.size} readings)")
-            if (history.isNotEmpty()) {
-                WSmallButton("EXPORT CSV") {
-                    val csv  = repository.exportCsv()
-                    val file = java.io.File(context.getExternalFilesDir(null),
-                        "biospace_watch_${System.currentTimeMillis()}.csv")
-                    file.writeText(csv)
-                    android.widget.Toast.makeText(context, "Saved: ${file.name}", android.widget.Toast.LENGTH_LONG).show()
-                }
-            }
-        }
-        Spacer(Modifier.height(8.dp))
-
-        if (history.size >= 2) {
-            WLabel("HR TIMELINE  (bpm)")
-            Spacer(Modifier.height(6.dp))
-            KpStyleGraph(
-                values = history.takeLast(96).map { it.heartRate?.toFloat() ?: 0f },
-                maxVal = 120f, minVal = 40f,
-                color  = Color(0xFFFF6B6B)
-            )
-            Spacer(Modifier.height(10.dp))
-
-            WLabel("BP TIMELINE  (systolic mmHg)")
-            Spacer(Modifier.height(6.dp))
-            KpStyleGraph(
-                values = history.takeLast(96).map { it.systolic?.toFloat() ?: 0f },
-                maxVal = 180f, minVal = 80f,
-                color  = Color(0xFFFF8C42)
-            )
-            Spacer(Modifier.height(10.dp))
-
-            WLabel("SPO2 TIMELINE  (%)")
-            Spacer(Modifier.height(6.dp))
-            KpStyleGraph(
-                values = history.takeLast(96).map { it.spo2?.toFloat() ?: 0f },
-                maxVal = 100f, minVal = 85f,
-                color  = Color(0xFF64B5F6)
-            )
-            Spacer(Modifier.height(14.dp))
-        }
-
-        WLabel("RECENT SNAPSHOTS")
-        Spacer(Modifier.height(8.dp))
-        if (history.isEmpty()) {
-            WCard { Text("No history yet. Connect your watch to start recording.", color = DimColor, fontSize = 10.sp) }
-        } else {
-            history.takeLast(10).reversed().forEach { snap ->
-                HistoryRow(snap)
-                Spacer(Modifier.height(4.dp))
-            }
-        }
-    }
-}
-
-// ── Kp-style bar graph ────────────────────────────────────────────────────────
-
-@Composable
-private fun KpStyleGraph(values: List<Float>, maxVal: Float, minVal: Float, color: Color) {
-    val nonZero = values.filter { it > 0f }
-    if (nonZero.isEmpty()) return
-
-    WCard {
+        // ── Header ─────────────────────────────────────────────────────────
         Row(
-            modifier = Modifier.fillMaxWidth().height(60.dp),
-            horizontalArrangement = Arrangement.spacedBy(1.dp),
-            verticalAlignment = Alignment.Bottom
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            values.forEach { v ->
-                val fraction = if (v <= 0f) 0f else ((v - minVal) / (maxVal - minVal)).coerceIn(0f, 1f)
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight(fraction.coerceAtLeast(0.02f))
-                        .clip(RoundedCornerShape(topStart = 2.dp, topEnd = 2.dp))
-                        .background(if (v > 0f) color.copy(alpha = 0.8f) else Color.Transparent)
+            Column {
+                Text("BP Doctor Watch", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                Text(
+                    device?.address ?: "Not paired",
+                    color = Color.Gray, fontSize = 12.sp
                 )
+            }
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (battery >= 0) {
+                    Text("🔋 $battery%", color = Color.White, fontSize = 13.sp)
+                }
+                ConnectionButton(connection, vm)
             }
         }
-    }
-}
 
-// ── Reports Tab ───────────────────────────────────────────────────────────────
-
-@Composable
-private fun ReportsTab(sessions: List<CorrelationSession>, repository: WatchRepository, context: android.content.Context) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(bottom = 24.dp)
-    ) {
-        WLabel("CORRELATION SESSIONS  (${sessions.size})")
-        Spacer(Modifier.height(8.dp))
-
-        if (sessions.isEmpty()) {
-            WCard {
-                Text(
-                    "No correlation sessions yet. Sessions are recorded automatically when space weather events or biometric alerts occur.",
-                    color = DimColor, fontSize = 10.sp, letterSpacing = 1.sp
-                )
-            }
-        } else {
-            val fmt = SimpleDateFormat("MM/dd HH:mm", Locale.US)
-            sessions.reversed().forEach { session ->
-                WCard {
-                    Row(modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(session.triggerDescription, color = CyanColor,
-                                fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
-                            Text(fmt.format(Date(session.startTime)), color = DimColor, fontSize = 9.sp)
-                            Text("${session.snapshots.size} readings", color = DimColor, fontSize = 9.sp)
+        LazyColumn(
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+            contentPadding = PaddingValues(bottom = 24.dp)
+        ) {
+            // ── Blood Pressure ────────────────────────────────────────────
+            item {
+                MetricCard(
+                    title = "Blood Pressure",
+                    icon = "🩸",
+                    color = AccentRed
+                ) {
+                    bp?.let {
+                        Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.Bottom) {
+                            BigValue("${it.systolic}", "mmHg", "SYS")
+                            Text("/", color = Color.White, fontSize = 28.sp)
+                            BigValue("${it.diastolic}", "mmHg", "DIA")
                         }
-                        WSmallButton("EXPORT") {
-                            val report = repository.exportSessionReport(session)
-                            val file   = java.io.File(context.getExternalFilesDir(null),
-                                "correlation_${session.id}.txt")
-                            file.writeText(report)
-                            android.widget.Toast.makeText(context, "Saved: ${file.name}", android.widget.Toast.LENGTH_LONG).show()
-                        }
+                        Spacer(Modifier.height(4.dp))
+                        BpCategory(it.systolic, it.diastolic)
+                        Text(formatTime(it.timestampMs), color = Color.Gray, fontSize = 11.sp)
+                    } ?: EmptyState("Waiting for reading…")
+
+                    if (bpHistory.size > 1) {
+                        Spacer(Modifier.height(8.dp))
+                        Text("History", color = Color.Gray, fontSize = 11.sp)
+                        MiniHistoryRow(bpHistory.takeLast(8).map { "${it.systolic}/${it.diastolic}" })
                     }
                 }
-                Spacer(Modifier.height(6.dp))
+            }
+
+            // ── Heart Rate ────────────────────────────────────────────────
+            item {
+                MetricCard("Heart Rate", "❤️", AccentRed) {
+                    hr?.let {
+                        BigValue("${it.bpm}", "BPM", "Heart Rate")
+                        HrCategory(it.bpm)
+                        Text(formatTime(it.timestampMs), color = Color.Gray, fontSize = 11.sp)
+                    } ?: EmptyState("Waiting for reading…")
+
+                    if (hrHistory.size > 1) {
+                        Spacer(Modifier.height(8.dp))
+                        MiniHistoryRow(hrHistory.takeLast(8).map { "${it.bpm} bpm" })
+                    }
+                }
+            }
+
+            // ── SpO2 ──────────────────────────────────────────────────────
+            item {
+                MetricCard("Blood Oxygen (SpO₂)", "💨", AccentTeal) {
+                    spo2?.let {
+                        BigValue("${it.percent}", "%", "SpO₂")
+                        Spo2Category(it.percent)
+                        Text(formatTime(it.timestampMs), color = Color.Gray, fontSize = 11.sp)
+                    } ?: EmptyState("Waiting for reading…")
+
+                    if (spo2History.size > 1) {
+                        Spacer(Modifier.height(8.dp))
+                        MiniHistoryRow(spo2History.takeLast(8).map { "${it.percent}%" })
+                    }
+                }
+            }
+
+            // ── Steps + Calories ──────────────────────────────────────────
+            item {
+                MetricCard("Activity", "👟", AccentGreen) {
+                    steps?.let {
+                        Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+                            BigValue("${it.count}", "steps", "Steps")
+                            BigValue("${it.kcal}", "kcal", "Calories")
+                        }
+                        Text(formatTime(it.timestampMs), color = Color.Gray, fontSize = 11.sp)
+                    } ?: EmptyState("Waiting for reading…")
+                }
+            }
+
+            // ── Sleep ─────────────────────────────────────────────────────
+            item {
+                MetricCard("Sleep", "🌙", AccentPurple) {
+                    if (sleepHistory.isNotEmpty()) {
+                        val deepMins  = sleepHistory.filter { it.type == 2 }.sumOf { it.durationMinutes }
+                        val lightMins = sleepHistory.filter { it.type == 1 }.sumOf { it.durationMinutes }
+                        val awakeMins = sleepHistory.filter { it.type == 0 }.sumOf { it.durationMinutes }
+                        val total     = deepMins + lightMins
+                        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                            BigValue("${total / 60}h ${total % 60}m", "", "Total")
+                            BigValue("${deepMins}m", "", "Deep")
+                            BigValue("${lightMins}m", "", "Light")
+                            BigValue("${awakeMins}m", "", "Awake")
+                        }
+                    } else {
+                        sleep?.let {
+                            val typeName = when (it.type) { 2 -> "Deep Sleep" 1 -> "Light Sleep" else -> "Awake" }
+                            BigValue("${it.durationMinutes}m", "", typeName)
+                        } ?: EmptyState("Waiting for reading…")
+                    }
+                }
+            }
+
+            // ── Stress ────────────────────────────────────────────────────
+            item {
+                MetricCard("Stress", "🧠", AccentAmber) {
+                    stress?.let {
+                        BigValue("${it.score}", "/100", "Stress Index")
+                        StressCategory(it.score)
+                        Text(formatTime(it.timestampMs), color = Color.Gray, fontSize = 11.sp)
+                    } ?: EmptyState("Waiting for reading…")
+                }
+            }
+
+            // ── Temperature ───────────────────────────────────────────────
+            item {
+                MetricCard("Body Temperature", "🌡️", AccentOrange) {
+                    temp?.let {
+                        BigValue("${"%.1f".format(it.celsius)}°C", "", "Temp")
+                        val f = it.celsius * 9f / 5f + 32f
+                        Text("${"%.1f".format(f)}°F", color = Color.Gray, fontSize = 13.sp)
+                        Text(formatTime(it.timestampMs), color = Color.Gray, fontSize = 11.sp)
+                    } ?: EmptyState("Waiting for reading…")
+                }
+            }
+
+            // ── Immunity ──────────────────────────────────────────────────
+            item {
+                MetricCard("Immunity", "🛡️", AccentTeal) {
+                    immunity?.let {
+                        BigValue("${it.score}", "/100", "Immunity Score")
+                        ImmunityCategory(it.score)
+                        Text(formatTime(it.timestampMs), color = Color.Gray, fontSize = 11.sp)
+                    } ?: EmptyState("Waiting for reading…")
+                }
             }
         }
     }
 }
 
-// ── Sub-components ────────────────────────────────────────────────────────────
-
+// ─── Connection button ───────────────────────────────────────────────────────
 @Composable
-private fun WLabel(text: String) {
-    Text(text, color = DimColor, fontSize = 9.sp, letterSpacing = 3.sp, fontFamily = FontFamily.Monospace)
+private fun ConnectionButton(state: ConnectionState, vm: MainViewModel) {
+    val (label, color) = when (state) {
+        ConnectionState.DISCONNECTED -> Pair("Connect", AccentTeal)
+        ConnectionState.SCANNING     -> Pair("Scanning…", AccentAmber)
+        ConnectionState.CONNECTING   -> Pair("Connecting…", AccentAmber)
+        ConnectionState.CONNECTED    -> Pair("Connected ✓", AccentGreen)
+    }
+    Button(
+        onClick = {
+            when (state) {
+                ConnectionState.DISCONNECTED -> vm.connectWatch()
+                ConnectionState.CONNECTED    -> vm.disconnectWatch()
+                else -> {}
+            }
+        },
+        colors = ButtonDefaults.buttonColors(containerColor = color),
+        shape = RoundedCornerShape(20.dp),
+        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
+    ) {
+        Text(label, fontSize = 12.sp, color = Color.White)
+    }
+}
+
+// ─── Reusable card ────────────────────────────────────────────────────────────
+@Composable
+private fun MetricCard(title: String, icon: String, color: Color, content: @Composable ColumnScope.() -> Unit) {
+    Card(
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = CardBg),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .background(color.copy(alpha = 0.2f), CircleShape),
+                    contentAlignment = Alignment.Center
+                ) { Text(icon, fontSize = 18.sp) }
+                Spacer(Modifier.width(10.dp))
+                Text(title, color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+            }
+            Spacer(Modifier.height(12.dp))
+            content()
+        }
+    }
 }
 
 @Composable
-private fun WCard(content: @Composable ColumnScope.() -> Unit) {
-    Column(
+private fun BigValue(value: String, unit: String, label: String) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Row(verticalAlignment = Alignment.Bottom) {
+            Text(value, color = Color.White, fontSize = 36.sp, fontWeight = FontWeight.Bold)
+            if (unit.isNotEmpty()) {
+                Spacer(Modifier.width(4.dp))
+                Text(unit, color = Color.Gray, fontSize = 14.sp,
+                    modifier = Modifier.padding(bottom = 6.dp))
+            }
+        }
+        Text(label, color = Color.Gray, fontSize = 11.sp)
+    }
+}
+
+@Composable
+private fun MiniHistoryRow(items: List<String>) {
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        items(items) { label ->
+            Text(
+                label,
+                color = Color.White,
+                fontSize = 11.sp,
+                modifier = Modifier
+                    .background(Color(0xFF2A2A3E), RoundedCornerShape(6.dp))
+                    .padding(horizontal = 8.dp, vertical = 4.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun EmptyState(msg: String) {
+    Text(msg, color = Color.Gray, fontSize = 13.sp, modifier = Modifier.fillMaxWidth(),
+        textAlign = TextAlign.Center)
+}
+
+// ─── Category labels ──────────────────────────────────────────────────────────
+@Composable
+private fun BpCategory(sys: Int, dia: Int) {
+    val (label, color) = when {
+        sys < 120 && dia < 80  -> "Normal" to AccentGreen
+        sys < 130 && dia < 80  -> "Elevated" to AccentAmber
+        sys < 140 || dia < 90  -> "High Stage 1" to AccentOrange
+        else                   -> "High Stage 2" to AccentRed
+    }
+    CategoryChip(label, color)
+}
+
+@Composable
+private fun HrCategory(bpm: Int) {
+    val (label, color) = when {
+        bpm < 60  -> "Bradycardia" to AccentTeal
+        bpm <= 100 -> "Normal" to AccentGreen
+        bpm <= 150 -> "Elevated" to AccentAmber
+        else       -> "High" to AccentRed
+    }
+    CategoryChip(label, color)
+}
+
+@Composable
+private fun Spo2Category(pct: Int) {
+    val (label, color) = when {
+        pct >= 95  -> "Normal" to AccentGreen
+        pct >= 90  -> "Low" to AccentAmber
+        else       -> "Critical" to AccentRed
+    }
+    CategoryChip(label, color)
+}
+
+@Composable
+private fun StressCategory(score: Int) {
+    val (label, color) = when {
+        score <= 29 -> "Relaxed" to AccentGreen
+        score <= 59 -> "Normal" to AccentTeal
+        score <= 79 -> "Elevated" to AccentAmber
+        else        -> "High Stress" to AccentRed
+    }
+    CategoryChip(label, color)
+}
+
+@Composable
+private fun ImmunityCategory(score: Int) {
+    val (label, color) = when {
+        score >= 80 -> "Strong" to AccentGreen
+        score >= 60 -> "Average" to AccentAmber
+        else        -> "Low" to AccentRed
+    }
+    CategoryChip(label, color)
+}
+
+@Composable
+private fun CategoryChip(label: String, color: Color) {
+    Text(
+        label,
+        color = color,
+        fontSize = 11.sp,
         modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
-            .background(CardColor)
-            .border(1.dp, BorderColor, RoundedCornerShape(10.dp))
-            .padding(14.dp),
-        content = content
+            .background(color.copy(alpha = 0.15f), RoundedCornerShape(8.dp))
+            .padding(horizontal = 8.dp, vertical = 3.dp)
     )
 }
 
-@Composable
-private fun WatchCard(content: @Composable ColumnScope.() -> Unit) = WCard(content)
-
-@Composable
-private fun WTile(modifier: Modifier, icon: ImageVector, label: String, value: String, unit: String, color: Color) {
-    Column(
-        modifier = modifier
-            .clip(RoundedCornerShape(10.dp))
-            .background(CardColor)
-            .border(1.dp, BorderColor, RoundedCornerShape(10.dp))
-            .padding(12.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Icon(icon, contentDescription = label, tint = color, modifier = Modifier.size(18.dp))
-        Spacer(Modifier.height(4.dp))
-        Text(label, color = DimColor, fontSize = 8.sp, letterSpacing = 1.sp)
-        Spacer(Modifier.height(2.dp))
-        Text(value, color = color, fontSize = 22.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
-        Text(unit, color = DimColor, fontSize = 8.sp, letterSpacing = 1.sp)
-    }
-}
-
-@Composable
-private fun WSmallButton(label: String, danger: Boolean = false, onClick: () -> Unit) {
-    Box(
-        modifier = Modifier
-            .clip(RoundedCornerShape(6.dp))
-            .background(if (danger) Color(0xFF2A0A0A) else Color(0xFF071828))
-            .border(1.dp, if (danger) Color(0xFFFF4444) else CyanColor, RoundedCornerShape(6.dp))
-            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 6.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(label, color = if (danger) Color(0xFFFF4444) else CyanColor,
-            fontSize = 9.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold)
-    }
-}
-
-@Composable
-private fun HistoryRow(snap: WatchSnapshot) {
-    val fmt = remember { SimpleDateFormat("MM/dd HH:mm", Locale.US) }
-    val triggerColor = when (snap.triggerType) {
-        TriggerType.SPACE_WEATHER_EVENT -> Color(0xFFFF8C00)
-        TriggerType.BIOMETRIC_ALERT     -> Color(0xFFFF4444)
-        TriggerType.SCHEDULED           -> DimColor
-    }
-    WCard {
-        Row(modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically) {
-            Column {
-                Text(fmt.format(Date(snap.timestamp)), color = DimColor, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
-                Text(snap.triggerType.name, color = triggerColor, fontSize = 7.sp, letterSpacing = 1.sp)
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                snap.heartRate?.let  { MiniStat("HR",   "$it",                      Color(0xFFFF6B6B)) }
-                if (snap.systolic != null && snap.diastolic != null)
-                                     MiniStat("BP",  "${snap.systolic}/${snap.diastolic}", Color(0xFFFF8C42))
-                snap.spo2?.let       { MiniStat("O2",   "$it%",                     Color(0xFF64B5F6)) }
-                snap.stress?.let     { MiniStat("STR",  "$it",                      Color(0xFFCE93D8)) }
-            }
-        }
-    }
-}
-
-@Composable
-private fun MiniStat(label: String, value: String, color: Color) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(label, color = DimColor, fontSize = 7.sp, letterSpacing = 1.sp)
-        Text(value, color = color, fontSize = 10.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
-    }
+private fun formatTime(ms: Long): String {
+    if (ms == 0L) return ""
+    return SimpleDateFormat("MMM d, h:mm a", Locale.US).format(Date(ms))
 }

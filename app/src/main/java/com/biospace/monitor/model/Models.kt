@@ -37,15 +37,14 @@ data class HemisphericPower(
 )
 
 data class HpValues(
-    @SerializedName("north") val north: String? = null,
-    @SerializedName("North") val northCap: String? = null,
-    @SerializedName("south") val south: String? = null,
-    @SerializedName("South") val southCap: String? = null
+    val north: String? = null,
+    val North: String? = null,
+    val south: String? = null,
+    val South: String? = null
 ) {
-    fun northVal() = (north ?: northCap)?.toDoubleOrNull() ?: Double.NaN
-    fun southVal() = (south ?: southCap)?.toDoubleOrNull() ?: Double.NaN
+    fun northVal() = (north ?: North)?.toDoubleOrNull() ?: Double.NaN
+    fun southVal() = (south ?: South)?.toDoubleOrNull() ?: Double.NaN
 }
-
 
 // ── CME from NASA DONKI ───────────────────────────────────────────────────────
 data class CmeEvent(

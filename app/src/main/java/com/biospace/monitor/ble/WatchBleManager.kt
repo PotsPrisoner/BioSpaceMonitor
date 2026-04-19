@@ -1,154 +1,241 @@
 package com.biospace.monitor.ble
 
+import android.annotation.SuppressLint
 import android.bluetooth.*
 import android.bluetooth.le.*
 import android.content.Context
-import android.os.Build
-import android.os.ParcelUuid
-import kotlinx.coroutines.flow.*
+import android.os.Handler
+import android.os.Looper
+import android.util.Log
+import com.biospace.monitor.ble.WatchProtocol.WatchReading
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
-enum class ConnectionState { DISCONNECTED, SCANNING, CONNECTING, CONNECTED }
+private const val TAG = "WatchBleManager"
+private const val SCAN_TIMEOUT_MS = 15_000L
 
+@SuppressLint("MissingPermission")
 class WatchBleManager(private val context: Context) {
 
-    private val adapter = (context.getSystemService(Context.BLUETOOTH_SERVICE)
-            as BluetoothManager).adapter
+    // ─── Public state ────────────────────────────────────────────────────────
+    private val _connectionState = MutableStateFlow(ConnectionState.DISCONNECTED)
+    val connectionState: StateFlow<ConnectionState> = _connectionState.asStateFlow()
 
-    private var gatt: BluetoothGatt? = null
+    private val _readings = MutableStateFlow<WatchReading?>(null)
+    val readings: StateFlow<WatchReading?> = _readings.asStateFlow()
+
+    private val _batteryLevel = MutableStateFlow(-1)
+    val batteryLevel: StateFlow<Int> = _batteryLevel.asStateFlow()
+
+    private val _lastKnownDevice = MutableStateFlow<BluetoothDevice?>(null)
+    val lastKnownDevice: StateFlow<BluetoothDevice?> = _lastKnownDevice.asStateFlow()
+
+    enum class ConnectionState { DISCONNECTED, SCANNING, CONNECTING, CONNECTED }
+
+    // ─── Internal ────────────────────────────────────────────────────────────
+    private val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
+    private val bluetoothAdapter: BluetoothAdapter? get() = bluetoothManager.adapter
+    private var bluetoothGatt: BluetoothGatt? = null
+    private var scanner: BluetoothLeScanner? = null
+    private val mainHandler = Handler(Looper.getMainLooper())
     private var scanCallback: ScanCallback? = null
 
-    private val _state = MutableStateFlow(ConnectionState.DISCONNECTED)
-    val state: StateFlow<ConnectionState> = _state.asStateFlow()
-
-    private val _readings = MutableSharedFlow<WatchReading>(replay = 0, extraBufferCapacity = 128)
-    val readings: SharedFlow<WatchReading> = _readings.asSharedFlow()
-
-    private val _log = MutableSharedFlow<String>(replay = 0, extraBufferCapacity = 64)
-    val log: SharedFlow<String> = _log.asSharedFlow()
-
-    // ── Public API ────────────────────────────────────────────────────────────
-
-    fun scanAndConnect() {
-        if (_state.value != ConnectionState.DISCONNECTED) return
-        connect("C0:29:AB:60:4D:10")
-    }
-
-    fun scanAndConnect_disabled() {
-        if (_state.value != ConnectionState.DISCONNECTED) return
-        _state.value = ConnectionState.SCANNING
-        log("Scanning for BP Doctor FIT…")
-
-        val scanner = adapter?.bluetoothLeScanner ?: run {
-            log("Bluetooth not available")
-            _state.value = ConnectionState.DISCONNECTED
+    // ─── Scan ────────────────────────────────────────────────────────────────
+    fun startScan() {
+        if (_connectionState.value != ConnectionState.DISCONNECTED) return
+        val adapter = bluetoothAdapter ?: run {
+            Log.e(TAG, "Bluetooth not available")
+            return
+        }
+        if (!adapter.isEnabled) {
+            Log.e(TAG, "Bluetooth disabled")
             return
         }
 
+        _connectionState.value = ConnectionState.SCANNING
+        scanner = adapter.bluetoothLeScanner
+
         val filter = ScanFilter.Builder()
-            .setServiceUuid(ParcelUuid(WatchProtocol.SERVICE_UUID))
+            .setServiceUuid(android.os.ParcelUuid(WatchProtocol.NUS_SERVICE))
             .build()
+
         val settings = ScanSettings.Builder()
             .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
             .build()
 
         val cb = object : ScanCallback() {
             override fun onScanResult(callbackType: Int, result: ScanResult) {
-                scanner.stopScan(this)
-                scanCallback = null
-                log("Found: ${result.device.address}")
-                connect(result.device.address)
+                Log.i(TAG, "Found watch: ${result.device.address} rssi=${result.rssi}")
+                stopScan()
+                connect(result.device)
             }
             override fun onScanFailed(errorCode: Int) {
-                log("Scan failed: $errorCode")
-                _state.value = ConnectionState.DISCONNECTED
+                Log.e(TAG, "Scan failed code=$errorCode")
+                _connectionState.value = ConnectionState.DISCONNECTED
             }
         }
         scanCallback = cb
-        scanner.startScan(listOf(filter), settings, cb)
+        scanner?.startScan(listOf(filter), settings, cb)
+
+        // Stop scan after timeout
+        mainHandler.postDelayed({ stopScan() }, SCAN_TIMEOUT_MS)
+        Log.i(TAG, "BLE scan started")
     }
 
-    fun connect(macAddress: String) {
-        disconnect()
-        _state.value = ConnectionState.CONNECTING
-        log("Connecting to $macAddress…")
-        val device = adapter?.getRemoteDevice(macAddress) ?: return
-        gatt = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M)
-            device.connectGatt(context, false, gattCallback, BluetoothDevice.TRANSPORT_LE)
-        else
-            device.connectGatt(context, false, gattCallback)
+    fun stopScan() {
+        scanCallback?.let { scanner?.stopScan(it) }
+        scanCallback = null
+        if (_connectionState.value == ConnectionState.SCANNING) {
+            _connectionState.value = ConnectionState.DISCONNECTED
+        }
+    }
+
+    // ─── Connect to known MAC ─────────────────────────────────────────────
+    fun connectTo(macAddress: String) {
+        val adapter = bluetoothAdapter ?: return
+        val device = try { adapter.getRemoteDevice(macAddress) } catch (e: Exception) {
+            Log.e(TAG, "Bad MAC $macAddress: $e"); return
+        }
+        connect(device)
+    }
+
+    private fun connect(device: BluetoothDevice) {
+        _connectionState.value = ConnectionState.CONNECTING
+        _lastKnownDevice.value = device
+        Log.i(TAG, "Connecting to ${device.address}")
+        bluetoothGatt = device.connectGatt(context, false, gattCallback, BluetoothDevice.TRANSPORT_LE)
     }
 
     fun disconnect() {
-        scanCallback?.let {
-            adapter?.bluetoothLeScanner?.stopScan(it)
-            scanCallback = null
-        }
-        gatt?.disconnect()
-        gatt?.close()
-        gatt = null
-        _state.value = ConnectionState.DISCONNECTED
+        bluetoothGatt?.disconnect()
     }
 
-    // ── GATT Callbacks ────────────────────────────────────────────────────────
+    fun close() {
+        stopScan()
+        bluetoothGatt?.close()
+        bluetoothGatt = null
+        _connectionState.value = ConnectionState.DISCONNECTED
+    }
 
+    // ─── GATT callback ───────────────────────────────────────────────────────
     private val gattCallback = object : BluetoothGattCallback() {
 
-        override fun onConnectionStateChange(g: BluetoothGatt, status: Int, newState: Int) {
-            if (newState == BluetoothProfile.STATE_CONNECTED) {
-                log("Connected — discovering services…")
-                _state.value = ConnectionState.CONNECTING
-                g.discoverServices()
-            } else {
-                log("Disconnected (status=$status)")
-                _state.value = ConnectionState.DISCONNECTED
-                gatt?.close(); gatt = null
+        override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
+            when (newState) {
+                BluetoothProfile.STATE_CONNECTED -> {
+                    Log.i(TAG, "GATT connected, discovering services")
+                    _connectionState.value = ConnectionState.CONNECTED
+                    gatt.discoverServices()
+                }
+                BluetoothProfile.STATE_DISCONNECTED -> {
+                    Log.i(TAG, "GATT disconnected status=$status")
+                    _connectionState.value = ConnectionState.DISCONNECTED
+                    gatt.close()
+                    bluetoothGatt = null
+                }
             }
         }
 
-        override fun onServicesDiscovered(g: BluetoothGatt, status: Int) {
+        override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
             if (status != BluetoothGatt.GATT_SUCCESS) {
-                log("Service discovery failed: $status")
+                Log.e(TAG, "Service discovery failed status=$status")
                 return
             }
-            val service = g.getService(WatchProtocol.SERVICE_UUID)
-            if (service == null) { log("NUS service not found"); return }
+            logServices(gatt)
+            enableNusNotifications(gatt)
+        }
 
-            val notifyChr = service.getCharacteristic(WatchProtocol.CHAR_NOTIFY_UUID)
-            g.setCharacteristicNotification(notifyChr, true)
+        override fun onCharacteristicChanged(
+            gatt: BluetoothGatt,
+            characteristic: BluetoothGattCharacteristic
+        ) {
+            val raw = characteristic.value ?: return
+            handleIncomingBytes(raw)
+        }
 
-            val descriptor = notifyChr.getDescriptor(WatchProtocol.DESCRIPTOR_UUID)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                g.writeDescriptor(descriptor, BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE)
+        // API 33+
+        override fun onCharacteristicChanged(
+            gatt: BluetoothGatt,
+            characteristic: BluetoothGattCharacteristic,
+            value: ByteArray
+        ) {
+            handleIncomingBytes(value)
+        }
+
+        override fun onDescriptorWrite(
+            gatt: BluetoothGatt,
+            descriptor: BluetoothGattDescriptor,
+            status: Int
+        ) {
+            if (status == BluetoothGatt.GATT_SUCCESS) {
+                Log.i(TAG, "CCCD written — NUS notifications enabled")
             } else {
-                @Suppress("DEPRECATION")
-                descriptor.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
-                @Suppress("DEPRECATION")
-                g.writeDescriptor(descriptor)
+                Log.e(TAG, "CCCD write failed status=$status")
             }
-
-            _state.value = ConnectionState.CONNECTED
-            log("Watch ready — receiving data")
-        }
-
-        // API < 33
-        @Deprecated("Deprecated in API 33")
-        override fun onCharacteristicChanged(g: BluetoothGatt, chr: BluetoothGattCharacteristic) {
-            @Suppress("DEPRECATION")
-            handleData(chr.value)
-        }
-
-        // API >= 33
-        override fun onCharacteristicChanged(g: BluetoothGatt, chr: BluetoothGattCharacteristic, value: ByteArray) {
-            handleData(value)
         }
     }
 
-    // ── Helpers ───────────────────────────────────────────────────────────────
-
-    private fun handleData(raw: ByteArray) {
-        log("RAW: ${raw.joinToString(" ") { "%02X".format(it) }}")
-        WatchProtocol.parse(raw)?.let { _readings.tryEmit(it) }
+    // ─── Enable NUS RX notifications ─────────────────────────────────────────
+    private fun enableNusNotifications(gatt: BluetoothGatt) {
+        val service = gatt.getService(WatchProtocol.NUS_SERVICE) ?: run {
+            Log.e(TAG, "NUS service not found")
+            return
+        }
+        val rxChar = service.getCharacteristic(WatchProtocol.NUS_RX_NOTIFY) ?: run {
+            Log.e(TAG, "NUS RX characteristic not found")
+            return
+        }
+        gatt.setCharacteristicNotification(rxChar, true)
+        val cccd = rxChar.getDescriptor(WatchProtocol.CCCD) ?: run {
+            Log.e(TAG, "CCCD descriptor not found")
+            return
+        }
+        cccd.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+        val ok = gatt.writeDescriptor(cccd)
+        Log.i(TAG, "Write CCCD result=$ok")
     }
 
-    private fun log(msg: String) { _log.tryEmit(msg) }
+    // ─── Send command to watch (NUS TX) ──────────────────────────────────────
+    fun sendCommand(bytes: ByteArray): Boolean {
+        val gatt = bluetoothGatt ?: return false
+        val service = gatt.getService(WatchProtocol.NUS_SERVICE) ?: return false
+        val txChar = service.getCharacteristic(WatchProtocol.NUS_TX_WRITE) ?: return false
+        txChar.value = bytes
+        txChar.writeType = BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
+        return gatt.writeCharacteristic(txChar)
+    }
+
+    // ─── Incoming byte handler ────────────────────────────────────────────────
+    private fun handleIncomingBytes(raw: ByteArray) {
+        // Always log raw hex to Logcat so we can map unknown command bytes
+        Log.d("WatchPacket", raw.joinToString(" ") { "%02X".format(it) })
+
+        val reading = WatchProtocol.parse(raw)
+
+        // Log unknown packets prominently so we can identify missing cmd bytes
+        if (reading is WatchReading.Unknown) {
+            Log.w(TAG, "Unknown cmd=0x${reading.cmdByte.toString(16).uppercase()} " +
+                    "raw=${raw.joinToString(" ") { "%02X".format(it) }}")
+        } else {
+            Log.i(TAG, "Reading: $reading")
+        }
+
+        // Update battery separately
+        if (reading is WatchReading.Battery) {
+            _batteryLevel.value = reading.percent
+        }
+
+        _readings.value = reading
+    }
+
+    // ─── Debug helpers ────────────────────────────────────────────────────────
+    private fun logServices(gatt: BluetoothGatt) {
+        gatt.services.forEach { svc ->
+            Log.d(TAG, "Service: ${svc.uuid}")
+            svc.characteristics.forEach { chr ->
+                Log.d(TAG, "  Char: ${chr.uuid}  props=0x${chr.properties.toString(16)}")
+            }
+        }
+    }
 }

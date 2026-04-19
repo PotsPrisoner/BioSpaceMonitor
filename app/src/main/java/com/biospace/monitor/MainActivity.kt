@@ -16,7 +16,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -30,8 +29,6 @@ import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.biospace.monitor.ui.MainViewModel
 import com.biospace.monitor.ui.screens.*
-import com.biospace.monitor.service.BioSpaceNotificationService
-import com.biospace.monitor.ble.WatchRepository
 import com.biospace.monitor.ui.theme.*
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
@@ -50,7 +47,6 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
-        BioSpaceNotificationService.createChannels(this)
         super.onCreate(savedInstanceState)
         setContent {
             BioSpaceTheme {
@@ -89,16 +85,13 @@ class MainActivity : ComponentActivity() {
 private enum class NavTab(val label: String) {
     DASHBOARD("SPACE"), IMF("IMF"), SCHUMANN("SR"), ANS("ANS"),
     ENVIRONMENT("ENV"), CME("CME"), IMAGES("IMG"),
-    ASSESSMENT("ASSESS"), ALERTS("ALERTS"), WATCH("WATCH"), CHAT("CHAT")
+    ASSESSMENT("ASSESS"), ALERTS("ALERTS"), CHAT("CHAT")
 }
 
 @Composable
 fun BioSpaceApp(onRequestGps: (callback: (android.location.Location) -> Unit) -> Unit) {
     val vm: MainViewModel = viewModel()
-    val context = LocalContext.current
-    val watchRepo = remember { WatchRepository(context) }
     val sw by vm.spaceWeather.collectAsState()
-    LaunchedEffect(sw) { watchRepo.onSpaceWeatherUpdate(sw) }
     val weather by vm.weather.collectAsState()
     val sr by vm.srMetrics.collectAsState()
     val ans by vm.ansState.collectAsState()
@@ -114,12 +107,9 @@ fun BioSpaceApp(onRequestGps: (callback: (android.location.Location) -> Unit) ->
         Column(modifier = Modifier.fillMaxSize()) {
             AppHeader(sw.kp, sw.lastUpdated, isRefreshing, onRefresh = { vm.refresh() })
             NavTabRow(selectedTab) { selectedTab = it }
-            if (selectedTab == NavTab.CHAT) {
-                ChatScreen(messages = chat, connected = chatConnected) { text, nick -> vm.sendChatMessage(text, nick) }
-            } else {
             val scrollState = rememberScrollState()
             Column(
-                modifier = if (selectedTab == NavTab.WATCH) Modifier.fillMaxSize() else Modifier.fillMaxSize().verticalScroll(scrollState)
+                modifier = Modifier.fillMaxSize().verticalScroll(scrollState)
                     .padding(horizontal = 14.dp).padding(bottom = 24.dp)
             ) {
                 Spacer(Modifier.height(11.dp))
@@ -137,11 +127,12 @@ fun BioSpaceApp(onRequestGps: (callback: (android.location.Location) -> Unit) ->
                     NavTab.IMAGES -> SolarImagesScreen()
                     NavTab.ASSESSMENT -> AssessmentScreen(assessment)
                     NavTab.ALERTS -> AlertsScreen(sw.alerts)
-                    NavTab.WATCH -> WatchScreen(watchRepo)
-                    NavTab.CHAT -> {}
+                    NavTab.CHAT -> ChatScreen(
+                        messages = chat,
+                        connected = chatConnected
+                    ) { text, nick -> vm.sendChatMessage(text, nick) }
                 }
             }
-            } // end else
         }
         if (showLocationDialog) {
             LocationSearchDialog(

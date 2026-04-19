@@ -26,7 +26,6 @@ import kotlinx.coroutines.flow.*
 import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.math.abs
-import com.biospace.monitor.ble.WatchRepository
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "biospace_prefs")
 
@@ -450,36 +449,4 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun JsonArray.getOrNull(index: Int) = try { this[index] } catch (e: Exception) { null }
-
-    // ── Watch BLE (auto-patched) ─────────────────────────────────────
-    private val watchRepo by lazy { WatchRepository.getInstance(getApplication()) }
-
-    val watchConnectionState = watchRepo.connectionState
-    val watchDevice          = watchRepo.lastKnownDevice
-    val watchBattery         = watchRepo.battery
-
-    val bloodPressure = watchRepo.bloodPressure
-    val heartRate     = watchRepo.heartRate
-    val spO2          = watchRepo.spO2
-    val steps         = watchRepo.steps
-    val sleep         = watchRepo.sleep
-    val stress        = watchRepo.stress
-    val temperature   = watchRepo.temperature
-    val immunity      = watchRepo.immunity
-    val hourlyBundle  = watchRepo.hourlyBundle
-    val oneKeyBundle  = watchRepo.oneKeyBundle
-
-    val bpHistory     = watchRepo.bpHistory
-    val hrHistory     = watchRepo.hrHistory
-    val spo2History   = watchRepo.spo2History
-    val sleepHistory  = watchRepo.sleepHistory
-    val stressHistory = watchRepo.stressHistory
-    val tempHistory   = watchRepo.tempHistory
-    val immHistory    = watchRepo.immHistory
-    val stepsHistory  = watchRepo.stepsHistory
-
-    fun connectWatch()              = watchRepo.connect()
-    fun disconnectWatch()           = watchRepo.disconnect()
-    fun connectWatchTo(mac: String) = watchRepo.connectTo(mac)
-
 }
