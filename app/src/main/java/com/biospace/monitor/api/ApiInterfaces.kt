@@ -3,6 +3,7 @@ package com.biospace.monitor.api
 import com.biospace.monitor.model.*
 import com.google.gson.JsonArray
 import com.google.gson.JsonElement
+import okhttp3.ResponseBody
 import retrofit2.http.GET
 import retrofit2.http.Query
 
@@ -23,8 +24,8 @@ interface NoaaApi {
     @GET("products/alerts.json")
     suspend fun getAlerts(): List<NoaaAlert>
 
-    @GET("json/hemispheric_power.json")
-    suspend fun getHemisphericPower(): JsonElement
+    @GET("text/aurora-nowcast-hemi-power.txt")
+    suspend fun getHemisphericPower(): ResponseBody
 }
 
 // ── NASA DONKI CME ────────────────────────────────────────────────────────────

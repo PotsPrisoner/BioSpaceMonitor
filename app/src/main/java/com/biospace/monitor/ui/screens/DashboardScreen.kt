@@ -84,7 +84,7 @@ fun DashboardScreen(sw: SpaceWeatherState) {
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 ScaleBox(
-                    "GEOMAGNETIC", "G${sw.gScale}",
+                    "STORM INDEX", "G${sw.gScale}",
                     stormScaleColor(sw.gScale), Modifier.weight(1f)
                 )
                 ScaleBox(

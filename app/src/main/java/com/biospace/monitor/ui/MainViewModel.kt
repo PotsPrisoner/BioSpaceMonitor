@@ -298,24 +298,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private suspend fun fetchHemisphericPower() {
         try {
-            val data = ApiClient.noaa.getHemisphericPower()
+            val body = ApiClient.noaa.getHemisphericPower().string()
             var north = Double.NaN; var south = Double.NaN
-            try {
-                // hemispheric_power.json returns array of [time, north_gw, south_gw]
-                if (data.isJsonArray) {
-                    val arr = data.asJsonArray
-                    val rows = arr.filter { it.isJsonArray && !it.asJsonArray[1].isJsonNull }
-                    if (rows.isNotEmpty()) {
-                        val last = rows.last().asJsonArray
-                        north = last[1].asDouble
-                        south = last[2].asDouble
-                    }
-                } else {
-                    val obj = data.asJsonObject
-                    north = obj.get("north_gw")?.asDouble ?: Double.NaN
-                    south = obj.get("south_gw")?.asDouble ?: Double.NaN
+            // Parse last non-comment data line
+            val lastLine = body.lines()
+                .filter { !it.startsWith("#") && it.isNotBlank() }
+                .lastOrNull()
+            if (lastLine != null) {
+                val parts = lastLine.trim().split(Regex("\\s+"))
+                if (parts.size >= 4) {
+                    north = parts[2].toDoubleOrNull() ?: Double.NaN
+                    south = parts[3].toDoubleOrNull() ?: Double.NaN
                 }
-            } catch (_: Exception) {}
+            }
             if (north.isNaN() || south.isNaN()) {
                 val kp = _spaceWeather.value.kp
                 north = kp * kp * 4.2 + 2
