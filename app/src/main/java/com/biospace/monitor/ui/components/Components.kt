@@ -315,3 +315,188 @@ fun SmallMetricBox(
         Text(status, color = color, fontSize = 7.sp, letterSpacing = 1.sp)
     }
 }
+
+// ── Neon Speedometer Gauge ─────────────────────────────────────────────────────
+// For rapidly changing values: solar wind speed, density, HP, Bz
+// sweepDegrees: total arc (default 240 for speedometer style)
+// startAngle: where arc begins (-210 = bottom-left start)
+@Composable
+fun NeonSpeedometer(
+    fraction: Float,           // 0.0 to 1.0
+    value: String,             // center display value
+    unit: String,              // center display unit
+    color: Color,
+    size: Dp = 140.dp,
+    minLabel: String = "0",
+    maxLabel: String = "MAX",
+    tickCount: Int = 9
+) {
+    val animFraction by animateFloatAsState(
+        targetValue = fraction.coerceIn(0f, 1f),
+        animationSpec = tween(800, easing = FastOutSlowInEasing),
+        label = "speedo"
+    )
+    val sweepDegrees = 240f
+    val startAngle = 150f   // bottom-left
+
+    Box(
+        Modifier.size(size),
+        contentAlignment = Alignment.Center
+    ) {
+        Canvas(Modifier.size(size)) {
+            val cx = this.size.width / 2f
+            val cy = this.size.height / 2f
+            val outerRadius = this.size.width / 2f - 8.dp.toPx()
+            val trackRadius = outerRadius - 10.dp.toPx()
+            val sw = 10.dp.toPx()
+
+            // Outer glow ring
+            drawArc(
+                color = color.copy(alpha = 0.08f),
+                startAngle = startAngle,
+                sweepAngle = sweepDegrees,
+                useCenter = false,
+                style = Stroke(18.dp.toPx(), cap = StrokeCap.Round),
+                topLeft = Offset(cx - outerRadius, cy - outerRadius),
+                size = androidx.compose.ui.geometry.Size(outerRadius * 2, outerRadius * 2)
+            )
+            // Track
+            drawArc(
+                color = Color(0xFF0D1F2D),
+                startAngle = startAngle,
+                sweepAngle = sweepDegrees,
+                useCenter = false,
+                style = Stroke(sw, cap = StrokeCap.Round),
+                topLeft = Offset(cx - trackRadius, cy - trackRadius),
+                size = androidx.compose.ui.geometry.Size(trackRadius * 2, trackRadius * 2)
+            )
+            // Active arc glow (softer outer)
+            drawArc(
+                color = color.copy(alpha = 0.25f),
+                startAngle = startAngle,
+                sweepAngle = sweepDegrees * animFraction,
+                useCenter = false,
+                style = Stroke(sw + 6.dp.toPx(), cap = StrokeCap.Round),
+                topLeft = Offset(cx - trackRadius, cy - trackRadius),
+                size = androidx.compose.ui.geometry.Size(trackRadius * 2, trackRadius * 2)
+            )
+            // Active arc
+            drawArc(
+                color = color,
+                startAngle = startAngle,
+                sweepAngle = sweepDegrees * animFraction,
+                useCenter = false,
+                style = Stroke(sw, cap = StrokeCap.Round),
+                topLeft = Offset(cx - trackRadius, cy - trackRadius),
+                size = androidx.compose.ui.geometry.Size(trackRadius * 2, trackRadius * 2)
+            )
+            // Tick marks
+            val tickRadius = outerRadius - 2.dp.toPx()
+            val tickInner = tickRadius - 8.dp.toPx()
+            for (i in 0..tickCount) {
+                val angle = Math.toRadians((startAngle + sweepDegrees * i / tickCount).toDouble())
+                val cos = Math.cos(angle).toFloat()
+                val sin = Math.sin(angle).toFloat()
+                val isMajor = i % 3 == 0
+                drawLine(
+                    color = if (i.toFloat() / tickCount <= animFraction) color.copy(0.8f)
+                            else Color.White.copy(0.2f),
+                    start = Offset(cx + cos * tickInner, cy + sin * tickInner),
+                    end = Offset(cx + cos * tickRadius, cy + sin * tickRadius),
+                    strokeWidth = if (isMajor) 2.5.dp.toPx() else 1.dp.toPx(),
+                    cap = StrokeCap.Round
+                )
+            }
+            // Needle tip dot at current position
+            val needleAngle = Math.toRadians((startAngle + sweepDegrees * animFraction).toDouble())
+            val needleTip = Offset(
+                cx + Math.cos(needleAngle).toFloat() * (trackRadius - sw / 2),
+                cy + Math.sin(needleAngle).toFloat() * (trackRadius - sw / 2)
+            )
+            drawCircle(color = color, radius = 5.dp.toPx(), center = needleTip)
+            drawCircle(color = Color.White, radius = 2.dp.toPx(), center = needleTip)
+        }
+
+        // Center text
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(
+                value,
+                color = Color.White,
+                fontSize = (size.value * 0.18f).sp,
+                fontFamily = FontFamily.Monospace,
+                fontWeight = FontWeight.Bold,
+                lineHeight = (size.value * 0.18f).sp
+            )
+            Text(
+                unit,
+                color = color.copy(alpha = 0.7f),
+                fontSize = (size.value * 0.09f).sp,
+                fontFamily = FontFamily.Monospace,
+                letterSpacing = 1.sp
+            )
+        }
+    }
+}
+
+// ── Smooth Bezier Sparkline ────────────────────────────────────────────────────
+// Drop-in replacement for Sparkline with smooth curves
+@Composable
+fun SmoothSparkline(
+    values: List<Double>,
+    color: Color,
+    modifier: Modifier = Modifier,
+    fillAlpha: Float = 0.15f,
+    strokeWidth: Float = 2.5f,
+    isBipolar: Boolean = false
+) {
+    if (values.size < 2) return
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        val minV: Double
+        val maxV: Double
+        val zeroY: Float
+
+        if (isBipolar) {
+            val absMax = maxOf(10.0, values.map { abs(it) }.maxOrNull() ?: 10.0)
+            minV = -absMax; maxV = absMax; zeroY = h / 2f
+        } else {
+            minV = values.minOrNull() ?: 0.0
+            maxV = values.maxOrNull() ?: 1.0
+            zeroY = h
+        }
+        val range = (maxV - minV).let { if (it < 0.001) 1.0 else it }
+        val pts = values.mapIndexed { i, v ->
+            val x = (i.toFloat() / (values.size - 1)) * w
+            val y = h - ((v - minV) / range * (h - 4)).toFloat()
+            Offset(x, y.coerceIn(0f, h))
+        }
+
+        // Smooth bezier path
+        val path = Path().apply {
+            moveTo(pts[0].x, pts[0].y)
+            for (i in 1 until pts.size) {
+                val prev = pts[i - 1]
+                val curr = pts[i]
+                val cpX = (prev.x + curr.x) / 2f
+                cubicTo(cpX, prev.y, cpX, curr.y, curr.x, curr.y)
+            }
+        }
+        // Fill
+        val fillPath = Path().apply {
+            addPath(path)
+            lineTo(pts.last().x, zeroY)
+            lineTo(0f, zeroY)
+            close()
+        }
+        drawPath(fillPath, Brush.verticalGradient(
+            listOf(color.copy(alpha = fillAlpha), color.copy(alpha = 0.02f))
+        ))
+        // Line with glow
+        drawPath(path, color.copy(alpha = 0.3f), style = Stroke(strokeWidth + 4f, cap = StrokeCap.Round))
+        drawPath(path, color, style = Stroke(strokeWidth, cap = StrokeCap.Round))
+        // End dot
+        drawCircle(color, radius = 4f, center = pts.last())
+        drawCircle(Color.White.copy(0.8f), radius = 2f, center = pts.last())
+    }
+}

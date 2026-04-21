@@ -63,7 +63,7 @@ fun DashboardScreen(sw: SpaceWeatherState) {
                     }
                     if (sw.kpHistory.isNotEmpty()) {
                         Spacer(Modifier.height(10.dp))
-                        Sparkline(
+                        SmoothSparkline(
                             values = sw.kpHistory.takeLast(60),
                             color = kpColor(sw.kp),
                             modifier = Modifier.fillMaxWidth().height(40.dp)
@@ -103,34 +103,39 @@ fun DashboardScreen(sw: SpaceWeatherState) {
         // ── Solar Wind ────────────────────────────────────────────────────────
         BioCard {
             CardTitle("SOLAR WIND", "// DSCOVR / ACE")
-            // Speed
-            Column(modifier = Modifier.padding(bottom = 12.dp)) {
+                // Speed + Density as neon speedometers
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("SPEED", color = DimColor, fontSize = 10.sp, letterSpacing = 2.sp, fontFamily = FontFamily.SansSerif)
-                    Text("${sw.speed.toInt()} km/s", color = CyanColor, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        NeonSpeedometer(
+                            fraction = ((sw.speed - 200) / 800f).coerceIn(0f, 1f),
+                            value = "${sw.speed.toInt()}",
+                            unit = "km/s",
+                            color = speedColor(sw.speed),
+                            size = 130.dp,
+                            minLabel = "200",
+                            maxLabel = "1000"
+                        )
+                        Text("SPEED", color = DimColor, fontSize = 8.sp, letterSpacing = 2.sp,
+                            fontFamily = FontFamily.Monospace)
+                    }
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        NeonSpeedometer(
+                            fraction = (sw.density / 30f).coerceIn(0f, 1f),
+                            value = String.format("%.1f", sw.density),
+                            unit = "p/cm³",
+                            color = GreenColor,
+                            size = 130.dp,
+                            minLabel = "0",
+                            maxLabel = "30"
+                        )
+                        Text("DENSITY", color = DimColor, fontSize = 8.sp, letterSpacing = 2.sp,
+                            fontFamily = FontFamily.Monospace)
+                    }
                 }
-                BioProgressBar(
-                    fraction = ((sw.speed - 200) / 800f).toFloat(),
-                    color = speedColor(sw.speed)
-                )
-            }
-            // Density
-            Column(modifier = Modifier.padding(bottom = 12.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text("DENSITY", color = DimColor, fontSize = 10.sp, letterSpacing = 2.sp, fontFamily = FontFamily.SansSerif)
-                    Text(String.format("%.1f p/cm³", sw.density), color = GreenColor, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
-                }
-                BioProgressBar(
-                    fraction = (sw.density / 30f).toFloat(),
-                    color = GreenColor
-                )
-            }
             MetricRow(
                 "TEMPERATURE",
                 "${String.format("%.0f", sw.temperature / 1000)} kK"
@@ -147,7 +152,7 @@ fun DashboardScreen(sw: SpaceWeatherState) {
                 Spacer(Modifier.height(12.dp))
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Column(modifier = Modifier.weight(1f)) {
-                        Sparkline(
+                        SmoothSmoothSparkline(
                             values = sw.speedHistory.takeLast(60),
                             color = CyanColor,
                             modifier = Modifier.fillMaxWidth().height(50.dp)
@@ -155,7 +160,7 @@ fun DashboardScreen(sw: SpaceWeatherState) {
                         Text("SPEED 1HR", color = DimColor, fontSize = 7.sp, letterSpacing = 2.sp)
                     }
                     Column(modifier = Modifier.weight(1f)) {
-                        Sparkline(
+                        SmoothSmoothSparkline(
                             values = sw.densityHistory.takeLast(60),
                             color = GreenColor,
                             modifier = Modifier.fillMaxWidth().height(50.dp)
@@ -243,7 +248,7 @@ fun DashboardScreen(sw: SpaceWeatherState) {
             }
             if (sw.hpNorthHistory.isNotEmpty()) {
                 Spacer(Modifier.height(10.dp))
-                Sparkline(
+                SmoothSparkline(
                     values = sw.hpNorthHistory.takeLast(60),
                     color = CyanColor,
                     modifier = Modifier.fillMaxWidth().height(50.dp)
