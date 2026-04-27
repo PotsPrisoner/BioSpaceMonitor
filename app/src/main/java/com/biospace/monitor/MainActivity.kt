@@ -10,8 +10,6 @@ import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -19,7 +17,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -83,23 +80,26 @@ class MainActivity : ComponentActivity() {
 }
 
 private enum class NavTab(val label: String) {
-    DASHBOARD("SPACE"), IMF("IMF"), SCHUMANN("SR"), ANS("ANS"),
-    ENVIRONMENT("ENV"), CME("CME"), IMAGES("IMG"),
-    ASSESSMENT("ASSESS"), ALERTS("ALERTS"), CHAT("CHAT"), WATCH("WATCH")
+    HEALTH("HEALTH"),
+    ENVIRONMENT("ENV"),
+    SOLAR("SOLAR"),
+    SPACEWX("SPACE WX"),
+    LOG("LOG & CHAT")
 }
 
 @Composable
 fun BioSpaceApp(onRequestGps: (callback: (android.location.Location) -> Unit) -> Unit) {
     val vm: MainViewModel = viewModel()
-    val sw by vm.spaceWeather.collectAsState()
-    val weather by vm.weather.collectAsState()
-    val sr by vm.srMetrics.collectAsState()
-    val ans by vm.ansState.collectAsState()
-    val assessment by vm.assessment.collectAsState()
-    val chat by vm.chatMessages.collectAsState()
+    val sw          by vm.spaceWeather.collectAsState()
+    val weather     by vm.weather.collectAsState()
+    val sr          by vm.srMetrics.collectAsState()
+    val ans         by vm.ansState.collectAsState()
+    val assessment  by vm.assessment.collectAsState()
+    val chat        by vm.chatMessages.collectAsState()
     val chatConnected by vm.chatConnected.collectAsState()
     val isRefreshing by vm.isRefreshing.collectAsState()
-    var selectedTab by remember { mutableStateOf(NavTab.DASHBOARD) }
+
+    var selectedTab by remember { mutableStateOf(NavTab.HEALTH) }
     var showLocationDialog by remember { mutableStateOf(false) }
 
     Box(modifier = Modifier.fillMaxSize().background(BgColor)) {
@@ -107,36 +107,30 @@ fun BioSpaceApp(onRequestGps: (callback: (android.location.Location) -> Unit) ->
         Column(modifier = Modifier.fillMaxSize()) {
             AppHeader(sw.kp, sw.lastUpdated, isRefreshing, onRefresh = { vm.refresh() })
             NavTabRow(selectedTab) { selectedTab = it }
-            if (selectedTab == NavTab.CHAT) {
-                ChatScreen(messages = chat, connected = chatConnected) { text, nick -> vm.sendChatMessage(text, nick) }
-            } else if (selectedTab == NavTab.WATCH) {
-                WatchScreen(vm)
-            } else {
             val scrollState = rememberScrollState()
             Column(
-                modifier = Modifier.fillMaxSize().verticalScroll(scrollState)
-                    .padding(horizontal = 14.dp).padding(bottom = 24.dp)
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(scrollState)
+                    .padding(horizontal = 14.dp)
+                    .padding(bottom = 24.dp)
             ) {
                 Spacer(Modifier.height(11.dp))
                 when (selectedTab) {
-                    NavTab.DASHBOARD -> DashboardScreen(sw)
-                    NavTab.IMF -> ImfScreen(sw)
-                    NavTab.SCHUMANN -> SchumannScreen(sr, sw)
-                    NavTab.ANS -> AnsScreen(ans)
+                    NavTab.HEALTH      -> HealthScreen(assessment, ans, sw, weather, sr)
                     NavTab.ENVIRONMENT -> EnvironmentScreen(
                         weather,
                         onRequestLocation = { onRequestGps { loc -> vm.setGpsLocation(loc) } },
                         onSearchCity = { showLocationDialog = true }
                     )
-                    NavTab.CME -> CmeScreen(sw.cmeEvents)
-                    NavTab.IMAGES -> SolarImagesScreen()
-                    NavTab.ASSESSMENT -> AssessmentScreen(assessment)
-                    NavTab.ALERTS -> AlertsScreen(sw.alerts)
-                    NavTab.WATCH -> {}
-                    NavTab.CHAT -> {}
+                    NavTab.SOLAR       -> SolarScreen(sw)
+                    NavTab.SPACEWX     -> SpaceWxScreen(sr, ans, sw)
+                    NavTab.LOG         -> LogChatScreen(
+                        messages  = chat,
+                        connected = chatConnected
+                    ) { text, nick -> vm.sendChatMessage(text, nick) }
                 }
             }
-            } // end else
         }
         if (showLocationDialog) {
             LocationSearchDialog(
@@ -165,51 +159,64 @@ private fun AppHeader(kp: Double, lastUpdated: Long, isRefreshing: Boolean, onRe
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text("AUTONOMOUS SPACE", color = DimColor, fontSize = 9.sp, letterSpacing = 5.sp)
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("BIOSPACE MONITOR", color = Color(0xFFE8F4FF).copy(alpha = glowAlpha),
-                fontSize = 20.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Black, letterSpacing = 5.sp)
+                fontSize = 20.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Black,
+                letterSpacing = 5.sp)
             if (isRefreshing) {
-                CircularProgressIndicator(color = CyanColor, modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
+                CircularProgressIndicator(color = CyanColor,
+                    modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
             } else {
                 IconButton(onClick = onRefresh, modifier = Modifier.size(24.dp)) {
-                    Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = CyanColor, modifier = Modifier.size(16.dp))
+                    androidx.compose.material3.Icon(
+                        androidx.compose.material.icons.Icons.Default.Refresh,
+                        contentDescription = "Refresh", tint = CyanColor,
+                        modifier = Modifier.size(16.dp))
                 }
             }
         }
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text("Kp ${String.format("%.2f", kp)}", color = kpColor(kp), fontSize = 9.sp, letterSpacing = 2.sp)
+        Row(verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("Kp ${String.format("%.2f", kp)}", color = kpColor(kp),
+                fontSize = 9.sp, letterSpacing = 2.sp)
             Box(modifier = Modifier.size(5.dp).clip(RoundedCornerShape(50)).background(CyanColor))
             if (lastUpdated > 0) {
                 val timeStr = remember(lastUpdated) {
-                    java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US).format(java.util.Date(lastUpdated))
+                    java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US)
+                        .format(java.util.Date(lastUpdated))
                 }
                 Text("UPDATED $timeStr", color = DimColor, fontSize = 8.sp, letterSpacing = 2.sp)
             }
         }
         Spacer(Modifier.height(10.dp))
         Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(
-            Brush.horizontalGradient(listOf(Color.Transparent, CyanColor.copy(0.3f), Color.Transparent))))
+            Brush.horizontalGradient(listOf(Color.Transparent,
+                CyanColor.copy(0.3f), Color.Transparent))))
     }
 }
 
 @Composable
 private fun NavTabRow(selected: NavTab, onSelect: (NavTab) -> Unit) {
     Row(
-        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
+        modifier = Modifier.fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
             .padding(horizontal = 14.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         NavTab.entries.forEach { tab ->
             val active = tab == selected
             Box(
-                modifier = Modifier.clip(RoundedCornerShape(7.dp))
+                modifier = Modifier
+                    .clip(RoundedCornerShape(7.dp))
                     .background(if (active) Color(0xFF071828) else CardColor)
                     .border(1.dp, if (active) CyanColor else BorderColor, RoundedCornerShape(7.dp))
                     .clickable { onSelect(tab) }
                     .padding(horizontal = 12.dp, vertical = 8.dp),
                 contentAlignment = Alignment.Center
             ) {
-                Text(tab.label, color = if (active) CyanColor else DimColor,
+                Text(tab.label,
+                    color = if (active) CyanColor else DimColor,
                     fontSize = 9.sp, letterSpacing = 2.sp,
                     fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal)
             }
